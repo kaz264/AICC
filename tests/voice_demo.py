@@ -1,7 +1,7 @@
 """AICC 음성 대화 데모 생성기
 
 고객 Agent와 AICC 페르소나가 텍스트로 대화한 뒤,
-양쪽 음성을 Google TTS로 합성하여 하나의 MP3 파일로 출력합니다.
+양쪽 음성을 ElevenLabs TTS로 합성하여 하나의 MP3 파일로 출력합니다.
 
 사용법:
     python -m tests.voice_demo
@@ -12,15 +12,10 @@
 import asyncio
 import json
 import argparse
-import os
-import io
-import subprocess
-import tempfile
+import re
+import time
+import httpx
 from pathlib import Path
-from datetime import datetime
-
-from google.cloud import texttospeech
-from google.oauth2 import service_account
 from anthropic import Anthropic
 
 from backend import config
@@ -29,77 +24,102 @@ from backend.pipeline.persona_loader import build_system_prompt
 from backend.pipeline.rag import search_knowledge
 
 
-# ── Google TTS 음성 설정 ──
+# ── 텍스트 정제 ──
 
-# 고객 음성 (페르소나와 구별되는 다른 음성)
-CUSTOMER_VOICE = texttospeech.VoiceSelectionParams(
-    language_code="ko-KR",
-    name="ko-KR-Neural2-B",  # 남성 음성 (고객 역할)
-)
+def clean_text_for_tts(text: str) -> str:
+    """TTS가 읽으면 안 되는 특수문자 제거"""
+    # 물결표, 이모지 등 제거
+    text = text.replace("~", "")
+    text = text.replace("♪", "")
+    text = text.replace("♥", "")
+    text = text.replace("★", "")
+    # 연속 느낌표/물음표를 하나로
+    text = re.sub(r"!+", "!", text)
+    text = re.sub(r"\?+", "?", text)
+    # 마크다운 기호 제거
+    text = re.sub(r"\*+", "", text)
+    text = re.sub(r"#+\s*", "", text)
+    text = re.sub(r"-\s+", "", text)
+    # 괄호 안 부연설명은 유지하되 괄호 제거
+    text = text.replace("(", ", ").replace(")", ",")
+    # 연속 공백 정리
+    text = re.sub(r"\s+", " ", text).strip()
+    # 연속 쉼표 정리
+    text = re.sub(r",\s*,", ",", text)
+    return text
 
-# 페르소나별 음성 매핑
-PERSONA_VOICES = {
-    "보험 상담사": texttospeech.VoiceSelectionParams(
-        language_code="ko-KR", name="ko-KR-Neural2-A"  # 여성
-    ),
-    "레스토랑 예약 안내": texttospeech.VoiceSelectionParams(
-        language_code="ko-KR", name="ko-KR-Neural2-C"  # 여성
-    ),
-    "IT 기술지원": texttospeech.VoiceSelectionParams(
-        language_code="ko-KR", name="ko-KR-Neural2-C"  # 남성 대체
-    ),
+
+# ── ElevenLabs TTS ──
+
+# 음성 ID (ElevenLabs 한국어 네이티브 음성)
+VOICES = {
+    # 고객 - 남성 (Hyunbin: 외교적, 서울 억양)
+    "customer": "s07IwTCOrCDCaETjUVjx",
+    # 페르소나별
+    "보험 상담사": "uyVNoMrnUku1dZyVEXwD",      # Anna Kim (여, 부드럽고 차분)
+    "레스토랑 예약 안내": "uyVNoMrnUku1dZyVEXwD", # Anna Kim (여)
+    "IT 기술지원": "ZJCNdZEjYwkOElxugmW2",      # Hyuk (남, 명확)
 }
 
-AUDIO_CONFIG = texttospeech.AudioConfig(
-    audio_encoding=texttospeech.AudioEncoding.MP3,
-    speaking_rate=1.05,  # 약간 빠르게 (자연스러움)
-    pitch=0.0,
-)
+ELEVENLABS_MODEL = "eleven_multilingual_v2"
 
 
-def get_tts_client() -> texttospeech.TextToSpeechClient:
-    """GCP 인증 + TTS 클라이언트 생성"""
+def synthesize_elevenlabs(text: str, voice_id: str) -> bytes:
+    """ElevenLabs TTS로 음성 합성"""
+    text = clean_text_for_tts(text)
+    resp = httpx.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+        headers={
+            "xi-api-key": config.ELEVENLABS_API_KEY,
+            "Content-Type": "application/json",
+        },
+        json={
+            "text": text,
+            "model_id": ELEVENLABS_MODEL,
+            "voice_settings": {
+                "stability": 0.4,           # 낮을수록 감정 변화 많음
+                "similarity_boost": 0.7,
+                "style": 0.3,               # 스타일 강화
+                "use_speaker_boost": True,
+            },
+        },
+        timeout=30,
+    )
+    if resp.status_code != 200:
+        print(f"  [TTS Error] {resp.status_code}: {resp.text[:100]}")
+        return b""
+    return resp.content
+
+
+def generate_silence_mp3(duration_ms: int) -> bytes:
+    """최소 크기의 무음 MP3 생성 (Google TTS SSML 사용)"""
+    from google.cloud import texttospeech
+    from google.oauth2 import service_account
+
     creds_path = Path(config.GOOGLE_APPLICATION_CREDENTIALS)
     if not creds_path.is_absolute():
         creds_path = Path(__file__).resolve().parent.parent / creds_path
     credentials = service_account.Credentials.from_service_account_file(str(creds_path))
-    return texttospeech.TextToSpeechClient(credentials=credentials)
+    tts_client = texttospeech.TextToSpeechClient(credentials=credentials)
 
-
-def synthesize_speech(
-    tts_client: texttospeech.TextToSpeechClient,
-    text: str,
-    voice: texttospeech.VoiceSelectionParams,
-) -> bytes:
-    """텍스트 → MP3 바이트 변환"""
-    synthesis_input = texttospeech.SynthesisInput(text=text)
-    response = tts_client.synthesize_speech(
-        input=synthesis_input, voice=voice, audio_config=AUDIO_CONFIG
-    )
-    return response.audio_content
-
-
-def synthesize_silence(
-    tts_client: texttospeech.TextToSpeechClient,
-    duration_ms: int,
-) -> bytes:
-    """SSML break 태그로 무음 MP3 생성"""
     ssml = f'<speak><break time="{duration_ms}ms"/></speak>'
-    synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
     response = tts_client.synthesize_speech(
-        input=synthesis_input,
-        voice=CUSTOMER_VOICE,
-        audio_config=AUDIO_CONFIG,
+        input=texttospeech.SynthesisInput(ssml=ssml),
+        voice=texttospeech.VoiceSelectionParams(language_code="ko-KR", name="ko-KR-Neural2-A"),
+        audio_config=texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3),
     )
     return response.audio_content
 
 
 def concat_mp3_bytes(parts: list[bytes], output_path: str):
-    """여러 MP3 바이트를 단순 이어붙이기 (MP3는 프레임 단위라 직접 concat 가능)"""
+    """여러 MP3 바이트를 이어붙이기"""
     with open(output_path, "wb") as f:
         for part in parts:
-            f.write(part)
+            if part:
+                f.write(part)
 
+
+# ── 텍스트 대화 엔진 ──
 
 def run_text_conversation(
     client: Anthropic,
@@ -112,14 +132,22 @@ def run_text_conversation(
     follow_ups = scenario.get("follow_ups", [])
     follow_up_idx = 0
 
-    # 고객 첫 메시지
+    # 시스템 프롬프트에 추가 지시
+    enhanced_prompt = system_prompt + """
+
+## 음성 출력용 추가 규칙
+- 물결표(~)를 절대 사용하지 마세요.
+- 이모지나 특수문자를 사용하지 마세요.
+- 불릿 포인트나 번호 목록 대신 자연스러운 대화체로 말하세요.
+"""
+
     customer_msg = scenario["opening_message"]
     conversation.append({"role": "customer", "content": customer_msg})
 
     max_turns = len(follow_ups) + 2
 
     for _ in range(max_turns):
-        # AICC 응답 (RAG 포함)
+        # RAG
         rag_context = ""
         kb_id = persona_config.get("knowledge_base_id")
         if kb_id:
@@ -137,21 +165,18 @@ def run_text_conversation(
         resp = client.messages.create(
             model=persona_config.get("llm_model", "claude-sonnet-4-20250514"),
             max_tokens=200,
-            system=system_prompt + rag_context,
+            system=enhanced_prompt + rag_context,
             messages=llm_messages,
         )
         aicc_response = resp.content[0].text
         conversation.append({"role": "aicc", "content": aicc_response})
 
-        # 고객 후속 질문
         if follow_up_idx < len(follow_ups):
             customer_msg = follow_ups[follow_up_idx]
             follow_up_idx += 1
             conversation.append({"role": "customer", "content": customer_msg})
         else:
-            # 자연스러운 마무리
             conversation.append({"role": "customer", "content": "네, 감사합니다. 도움이 됐어요."})
-            # AICC 마무리 인사
             llm_messages_final = [
                 {"role": "user" if m["role"] == "customer" else "assistant", "content": m["content"]}
                 for m in conversation
@@ -159,7 +184,7 @@ def run_text_conversation(
             resp = client.messages.create(
                 model=persona_config.get("llm_model", "claude-sonnet-4-20250514"),
                 max_tokens=100,
-                system=system_prompt,
+                system=enhanced_prompt,
                 messages=llm_messages_final,
             )
             conversation.append({"role": "aicc", "content": resp.content[0].text})
@@ -168,13 +193,14 @@ def run_text_conversation(
     return conversation
 
 
+# ── 메인 ──
+
 async def generate_voice_demo(
     scenario_id: str = "restaurant_reservation",
     output_path: str | None = None,
 ):
     """음성 대화 데모 MP3 생성"""
 
-    # 시나리오 로드
     scenarios_path = Path(__file__).parent / "scenarios.json"
     with open(scenarios_path, encoding="utf-8") as f:
         scenarios = json.load(f)
@@ -184,6 +210,7 @@ async def generate_voice_demo(
         return
 
     print(f"시나리오: {scenario['id']} ({scenario['persona_name']})")
+    print(f"TTS 엔진: ElevenLabs (eleven_multilingual_v2)")
 
     # 초기화
     await init_db()
@@ -210,36 +237,69 @@ async def generate_voice_demo(
         scenario,
     )
 
-    # 대화 내용 출력
     for msg in conversation:
         role = "고객" if msg["role"] == "customer" else "상담사"
         print(f"  {role}: {msg['content']}")
 
-    # 2. TTS 음성 합성
-    print(f"\n2단계: 음성 합성 중... ({len(conversation)}턴)")
-    tts_client = get_tts_client()
-    persona_voice = PERSONA_VOICES.get(persona.name, CUSTOMER_VOICE)
+    # 2. ElevenLabs TTS 합성
+    print(f"\n2단계: ElevenLabs 음성 합성 중... ({len(conversation)}턴)")
+
+    customer_voice = VOICES["customer"]
+    persona_voice = VOICES.get(persona.name, customer_voice)
 
     mp3_parts: list[bytes] = []
 
-    # 무음 미리 생성
-    silence_600 = synthesize_silence(tts_client, 600)
-    silence_1000 = synthesize_silence(tts_client, 1000)
+    # 무음 (Google TTS로 생성)
+    print("  무음 생성 중...")
+    silence_300 = generate_silence_mp3(300)    # STT 처리 시간
+    silence_700 = generate_silence_mp3(700)    # 턴 사이 간격
+    silence_1000 = generate_silence_mp3(1000)  # LLM 처리 대기
+    silence_1200 = generate_silence_mp3(1200)
+
+    # 추임새 목록 (페르소나 음성으로 미리 합성)
+    filler_texts = ["네,", "네, 알겠습니다.", "아, 그렇군요."]
+    fillers_audio: list[bytes] = []
+    if persona.filler_enabled:
+        print("  추임새 합성 중...")
+        for ft in filler_texts:
+            audio = synthesize_elevenlabs(ft, persona_voice)
+            fillers_audio.append(audio)
+            time.sleep(0.3)
+
+    filler_idx = 0
 
     # 인트로
-    intro_text = f"AICC 데모입니다. {persona.name} 페르소나와 고객의 대화를 들려드리겠습니다."
-    mp3_parts.append(synthesize_speech(tts_client, intro_text, CUSTOMER_VOICE))
-    mp3_parts.append(silence_1000)
+    intro_text = f"AICC 데모. {persona.name} 페르소나와 고객의 대화입니다."
+    mp3_parts.append(synthesize_elevenlabs(intro_text, VOICES["customer"]))
+    mp3_parts.append(silence_1200)
 
-    # 각 턴 합성
+    # 각 턴 합성 (추임새 + 실제 지연 시뮬레이션)
     for i, msg in enumerate(conversation):
-        print(f"  [{i+1}/{len(conversation)}] {msg['role']}: {msg['content'][:40]}...")
-        voice = CUSTOMER_VOICE if msg["role"] == "customer" else persona_voice
-        mp3_parts.append(synthesize_speech(tts_client, msg["content"], voice))
-        mp3_parts.append(silence_600)
+        clean = clean_text_for_tts(msg["content"])
+        print(f"  [{i+1}/{len(conversation)}] {msg['role']}: {clean[:50]}...")
+
+        if msg["role"] == "customer":
+            # 고객 발화
+            audio = synthesize_elevenlabs(msg["content"], customer_voice)
+            mp3_parts.append(audio)
+            # 고객 발화 후 짧은 간격 (STT 처리 시뮬레이션)
+            mp3_parts.append(silence_300)
+        else:
+            # 상담사 응답: 추임새 → 대기 → 본 답변
+            if fillers_audio and persona.filler_enabled:
+                mp3_parts.append(fillers_audio[filler_idx % len(fillers_audio)])
+                filler_idx += 1
+                mp3_parts.append(silence_1000)  # LLM 처리 대기
+
+            audio = synthesize_elevenlabs(msg["content"], persona_voice)
+            mp3_parts.append(audio)
+            mp3_parts.append(silence_700)  # 답변 후 간격
+
+        # ElevenLabs rate limit 방지
+        time.sleep(0.3)
 
     # 아웃트로
-    mp3_parts.append(synthesize_speech(tts_client, "데모가 끝났습니다. 감사합니다.", CUSTOMER_VOICE))
+    mp3_parts.append(synthesize_elevenlabs("데모가 끝났습니다.", VOICES["customer"]))
 
     # 3. MP3 저장
     if not output_path:
