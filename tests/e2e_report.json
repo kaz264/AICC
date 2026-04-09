@@ -1,0 +1,218 @@
+{
+  "timestamp": "2026-04-10T08:34:55.999950",
+  "results": [
+    {
+      "scenario_id": "restaurant_reservation",
+      "persona_name": "레스토랑 예약 안내",
+      "turns": [
+        {
+          "turn": 0,
+          "role": "customer",
+          "text_sent": "안녕하세요~ 이번 주 토요일에 남자친구 생일이라 디너 예약하고 싶은데요",
+          "text_received_stt": "안녕하세요 이번 주 토요일에 남자친구 생일이라 디너 예약하고 싶은데요.",
+          "text_response": "",
+          "tts_ms": 2012.6839000731707,
+          "stt_ms": 3786.6328000091016,
+          "rag_ms": 0,
+          "llm_ms": 0,
+          "response_tts_ms": 0,
+          "total_pipeline_ms": 0
+        },
+        {
+          "turn": 0,
+          "role": "aicc",
+          "text_sent": "",
+          "text_received_stt": "",
+          "text_response": "안녕하세요! 남자친구 생일이시군요, 축하드려요. 이번 주 토요일이면 몇 일이고 몇 분 정도로 오실 예정인가요?",
+          "tts_ms": 0,
+          "stt_ms": 3786.6328000091016,
+          "rag_ms": 1035.5199000332505,
+          "llm_ms": 2669.7236001491547,
+          "response_tts_ms": 2367.294399999082,
+          "total_pipeline_ms": 9859.569099964574
+        },
+        {
+          "turn": 1,
+          "role": "customer",
+          "text_sent": "2명인데 분위기 좋은 자리 있을까요? 프라이빗 룸 같은 거요",
+          "text_received_stt": "두 명인데 분위기 좋은 자리 있을까요? 프라이빗 룸 같은 거요.",
+          "text_response": "",
+          "tts_ms": 1604.4342999812216,
+          "stt_ms": 1360.6364999432117,
+          "rag_ms": 0,
+          "llm_ms": 0,
+          "response_tts_ms": 0,
+          "total_pipeline_ms": 0
+        },
+        {
+          "turn": 1,
+          "role": "aicc",
+          "text_sent": "",
+          "text_received_stt": "",
+          "text_response": "네~ 프라이빗 룸 있어요! 6~8인 기준이라 두 분이 쓰시기엔 충분히 여유롭고, 코스 주문하시면 룸차지 없이 이용 가능해요. 몇 시쯤 생각하고 계신가요?",
+          "tts_ms": 0,
+          "stt_ms": 1360.6364999432117,
+          "rag_ms": 1087.1844999492168,
+          "llm_ms": 3034.9863001611084,
+          "response_tts_ms": 2886.937300208956,
+          "total_pipeline_ms": 8370.210799854249
+        },
+        {
+          "turn": 2,
+          "role": "customer",
+          "text_sent": "디너 코스는 뭐가 있어요?",
+          "text_received_stt": "디너 코스는 뭐가 있어요?",
+          "text_response": "",
+          "tts_ms": 1362.2387000359595,
+          "stt_ms": 842.4583999440074,
+          "rag_ms": 0,
+          "llm_ms": 0,
+          "response_tts_ms": 0,
+          "total_pipeline_ms": 0
+        },
+        {
+          "turn": 2,
+          "role": "aicc",
+          "text_sent": "",
+          "text_received_stt": "",
+          "text_response": "저희 디너 코스는 85,000원이고, 아뮤즈부쉬부터 시작해서 참치 타르타르, 랍스터 비스크, 수제 뇨끼, 한우 안심 스테이크 200그램, 계절 디저트, 마지막에 커피나 차까지 나와요. 와인 페어링도 추가하실 수 있는데 1인당 45,000원이에요.",
+          "tts_ms": 0,
+          "stt_ms": 842.4583999440074,
+          "rag_ms": 1241.2181000690907,
+          "llm_ms": 2793.8946997746825,
+          "response_tts_ms": 4209.846700076014,
+          "total_pipeline_ms": 9087.893600109965
+        },
+        {
+          "turn": 3,
+          "role": "customer",
+          "text_sent": "혹시 생일 케이크 준비해주시나요?",
+          "text_received_stt": "혹시 생일 케이크 준비해 주시나요?",
+          "text_response": "",
+          "tts_ms": 1353.6684000864625,
+          "stt_ms": 1189.691700041294,
+          "rag_ms": 0,
+          "llm_ms": 0,
+          "response_tts_ms": 0,
+          "total_pipeline_ms": 0
+        },
+        {
+          "turn": 3,
+          "role": "aicc",
+          "text_sent": "",
+          "text_received_stt": "",
+          "text_response": "네~ 생일 케이크는 1일 전에 예약해주시면 서비스로 준비해드려요! 토요일 디너시라면 금요일까지 말씀해주시면 돼요.",
+          "tts_ms": 0,
+          "stt_ms": 1189.691700041294,
+          "rag_ms": 1293.7261001206934,
+          "llm_ms": 2054.1022999677807,
+          "response_tts_ms": 2292.2333998139948,
+          "total_pipeline_ms": 6830.149600049481
+        },
+        {
+          "turn": 4,
+          "role": "customer",
+          "text_sent": "주차는 가능한가요?",
+          "text_received_stt": "주차는 가능한가요?",
+          "text_response": "",
+          "tts_ms": 1233.3071001339704,
+          "stt_ms": 731.5311999991536,
+          "rag_ms": 0,
+          "llm_ms": 0,
+          "response_tts_ms": 0,
+          "total_pipeline_ms": 0
+        },
+        {
+          "turn": 4,
+          "role": "aicc",
+          "text_sent": "",
+          "text_received_stt": "",
+          "text_response": "네, 건물에 주차장 있어요! 만약 만차시에는 인근 코엑스 공영주차장 이용하시면 되고, 주차 영수증 가져오시면 2시간 추가 할인 도와드릴게요.",
+          "tts_ms": 0,
+          "stt_ms": 731.5311999991536,
+          "rag_ms": 1157.981799915433,
+          "llm_ms": 2466.6129001416266,
+          "response_tts_ms": 2517.313500167802,
+          "total_pipeline_ms": 6873.683999991044
+        },
+        {
+          "turn": 5,
+          "role": "customer",
+          "text_sent": "네, 감사합니다. 도움이 됐어요.",
+          "text_received_stt": "네 감사합니다 도움이 됐어요.",
+          "text_response": "",
+          "tts_ms": 1460.608100052923,
+          "stt_ms": 937.7613998949528,
+          "rag_ms": 0,
+          "llm_ms": 0,
+          "response_tts_ms": 0,
+          "total_pipeline_ms": 0
+        },
+        {
+          "turn": 5,
+          "role": "aicc",
+          "text_sent": "",
+          "text_received_stt": "",
+          "text_response": "네~ 그럼 예약은 어떻게 하실 건가요? 지금 바로 도와드릴 수 있어요!",
+          "tts_ms": 0,
+          "stt_ms": 937.7613998949528,
+          "rag_ms": 1319.084499962628,
+          "llm_ms": 2115.514500066638,
+          "response_tts_ms": 1739.866100018844,
+          "total_pipeline_ms": 6112.522899871692
+        }
+      ],
+      "evaluation": {
+        "scores": {
+          "accuracy": {
+            "score": 9,
+            "reason": "생일 디너 코스, 프라이빗 룸, 케이크 서비스, 주차 등 고객이 요청한 모든 정보를 정확하게 안내했으며, 구체적인 가격과 조건까지 상세히 제공함"
+          },
+          "tone": {
+            "score": 8,
+            "reason": "친근하고 따뜻한 톤으로 생일을 축하하는 말까지 전하며 적절한 존댓말과 이모티콘 사용으로 자연스러운 대화 분위기 조성"
+          },
+          "empathy": {
+            "score": 9,
+            "reason": "첫 인사에서 생일 축하 인사를 건네고, 고객의 특별한 날을 위한 배려가 잘 드러남. 케이크 서비스나 주차 할인까지 세심하게 안내"
+          },
+          "conciseness": {
+            "score": 7,
+            "reason": "필요한 정보는 충분히 제공했으나 일부 답변이 다소 길어서 핵심 정보 전달에 약간의 개선 여지 있음"
+          },
+          "stt_accuracy": {
+            "score": 9,
+            "reason": "대부분 완벽하게 인식했으며, '2명'을 '두 명'으로, 띄어쓰기나 문장부호 차이 정도만 있어 의미 전달에는 문제없음"
+          },
+          "latency": {
+            "score": 2,
+            "reason": "평균 7.9초, 최대 9.9초로 목표 1.5초 대비 5배 이상 지연. 실시간 대화로는 부자연스러운 수준의 응답 지연 발생"
+          },
+          "overall_experience": {
+            "score": 6,
+            "reason": "정보 품질과 서비스 마인드는 우수하나 심각한 응답 지연으로 인해 전체적인 고객 경험이 크게 저하됨"
+          }
+        },
+        "goal_achieved": true,
+        "avg_latency_ms": 7856,
+        "strengths": [
+          "생일 축하 인사 등 감정적 공감 능력 우수",
+          "프라이빗 룸, 케이크, 주차 등 고객 니즈 완벽 파악",
+          "구체적인 가격과 조건 상세 안내",
+          "STT 인식률 매우 높음"
+        ],
+        "improvements": [
+          "응답 속도 대폭 개선 필요 (현재 5배 지연)",
+          "답변 길이 최적화로 간결성 향상",
+          "파이프라인 전체 성능 튜닝 시급"
+        ],
+        "stt_issues": [
+          "숫자 표기 차이('2명'→'두 명')",
+          "문장부호 및 띄어쓰기 미세 차이"
+        ],
+        "summary": "서비스 품질은 우수하나 심각한 응답 지연(7.9초)으로 실용성 저해"
+      },
+      "total_duration_ms": 59174.839300103486
+    }
+  ]
+}
