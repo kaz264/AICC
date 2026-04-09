@@ -1,0 +1,20 @@
+# AICC PoC Dependencies
+
+# Core framework
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-dotenv==1.1.0
+pydantic==2.11.1
+
+# Pipecat - Voice AI pipeline
+pipecat-ai[google,anthropic,daily,silero,elevenlabs]==0.0.73
+
+# Database
+aiosqlite==0.21.0
+
+# RAG Knowledge Base
+chromadb==1.0.7
+
+# Utilities
+aiohttp==3.11.16
+python-multipart==0.0.20
