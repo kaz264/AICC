@@ -81,20 +81,22 @@ class AIContactCenter:
 
     def get_response(self, conversation_history: list[dict]) -> str:
         """고객 메시지에 대한 AICC 응답 생성"""
-        # RAG: 지식베이스에서 관련 정보 검색
+        # RAG: 지식베이스에서 관련 정보 검색 (최근 2개 메시지로 검색)
         rag_context = ""
         kb_id = self.persona_config.get("knowledge_base_id")
         if kb_id and conversation_history:
-            last_user_msg = conversation_history[-1]["content"]
-            results = search_knowledge(kb_id, last_user_msg, n_results=3)
+            # 최근 사용자 메시지들을 합쳐서 검색 (컨텍스트 보강)
+            recent_msgs = [m["content"] for m in conversation_history if m["role"] == "user"]
+            search_query = " ".join(recent_msgs[-2:]) if len(recent_msgs) >= 2 else recent_msgs[-1]
+            results = search_knowledge(kb_id, search_query, n_results=3)
             if results:
-                rag_context = "\n\n## 참고 지식\n" + "\n".join(f"- {r}" for r in results)
+                rag_context = "\n\n## 참고 지식 (이 정보가 답변의 근거입니다. 여기 있는 구체적 수치, 주소, 절차를 반드시 인용하세요.)\n" + "\n\n".join(results)
 
         full_prompt = self.system_prompt + rag_context
 
         resp = self.client.messages.create(
             model=self.persona_config.get("llm_model", "claude-sonnet-4-20250514"),
-            max_tokens=300,
+            max_tokens=200,
             system=full_prompt,
             messages=conversation_history,
         )
