@@ -17,6 +17,7 @@ from backend.pipeline.persona_loader import (
     build_system_prompt,
 )
 from backend.pipeline.rag import search_knowledge
+from backend.pipeline.filler import FillerProcessor
 
 
 async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
@@ -103,12 +104,16 @@ async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
         ),
     )
 
+    # ── 추임새 프로세서 (LLM 대기 중 즉시 응답) ──
+    filler = FillerProcessor(enabled=persona.filler_enabled)
+
     # ── 파이프라인 조립 ──
     pipeline = Pipeline(
         [
             transport.input(),
             stt,
             context_aggregator.user(),
+            filler,  # STT 후, LLM 전에 추임새 삽입
             llm,
             tts,
             transport.output(),
