@@ -10,9 +10,14 @@ import json
 import argparse
 import re
 import time
+import subprocess
+import tempfile
+import shutil
 import httpx
 from pathlib import Path
 from anthropic import Anthropic
+
+FFMPEG = r"C:\Users\minsu\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1-full_build\bin\ffmpeg.exe"
 
 from backend import config
 from backend.db.database import init_db, list_personas
@@ -238,15 +243,47 @@ async def generate_demo(scenario_id="restaurant_reservation", output_path=None):
 
     mp3_parts.append(typecast_tts(customer_voice, "데모가 끝났습니다."))
 
-    # 3. 저장
+    # 3. 개별 파일 저장 → ffmpeg로 합치기
     if not output_path:
         output_path = f"demo_typecast_{scenario_id}.mp3"
     output_full = Path(__file__).resolve().parent.parent / output_path
 
-    with open(str(output_full), "wb") as f:
-        for part in mp3_parts:
-            if part:
-                f.write(part)
+    tmp_dir = Path(tempfile.mkdtemp())
+    part_files = []
+
+    print(f"\n3단계: 오디오 파일 합치기...")
+    for i, part in enumerate(mp3_parts):
+        if not part:
+            continue
+        # Typecast는 WAV, Google은 MP3 → 확장자 자동 판별
+        is_wav = part[:4] == b'RIFF'
+        ext = ".wav" if is_wav else ".mp3"
+        part_path = tmp_dir / f"part_{i:04d}{ext}"
+        part_path.write_bytes(part)
+        part_files.append(part_path)
+
+    # ffmpeg concat: 모든 파일을 MP3로 통일하여 합치기
+    filter_inputs = ""
+    filter_concat = ""
+    for i, pf in enumerate(part_files):
+        filter_inputs += f" -i \"{pf}\""
+    filter_concat = f"concat=n={len(part_files)}:v=0:a=1[out]"
+
+    # ffmpeg 명령 구성
+    cmd_parts = [f'"{FFMPEG}"', '-y']
+    for pf in part_files:
+        cmd_parts.append(f'-i "{pf}"')
+    cmd_parts.append(f'-filter_complex "{" ".join(f"[{i}:a]" for i in range(len(part_files)))}concat=n={len(part_files)}:v=0:a=1[out]"')
+    cmd_parts.append('-map "[out]"')
+    cmd_parts.append(f'-c:a libmp3lame -q:a 2 "{output_full}"')
+
+    cmd = " ".join(cmd_parts)
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        print(f"  ffmpeg error: {result.stderr[:300]}")
+
+    # 임시 파일 정리
+    shutil.rmtree(tmp_dir, ignore_errors=True)
 
     print(f"\n완료!")
     print(f"  파일: {output_full}")
