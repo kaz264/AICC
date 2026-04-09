@@ -202,42 +202,26 @@ async def generate_demo(scenario_id="restaurant_reservation", output_path=None):
     mp3_parts: list[bytes] = []
 
     print("  무음 생성 중...")
-    silence_300 = generate_silence(300)
-    silence_700 = generate_silence(700)
-    silence_1000 = generate_silence(1000)
+    silence_500 = generate_silence(500)
+    silence_800 = generate_silence(800)
     silence_1200 = generate_silence(1200)
-
-    # 추임새 미리 합성
-    filler_texts = ["네,", "네, 알겠습니다.", "아, 그렇군요."]
-    fillers = []
-    if persona.filler_enabled:
-        print("  추임새 합성 중...")
-        for ft in filler_texts:
-            fillers.append(typecast_tts(persona_voice, ft))
-            time.sleep(0.5)
-
-    filler_idx = 0
 
     # 인트로
     mp3_parts.append(typecast_tts(customer_voice, f"AICC 데모. {persona.name} 페르소나와 고객의 대화입니다."))
     mp3_parts.append(silence_1200)
     time.sleep(0.5)
 
-    # 대화
+    # 대화 (추임새는 LLM이 본 답변에 자연스럽게 포함)
     for i, msg in enumerate(conversation):
         clean = clean_text_for_tts(msg["content"])
         print(f"  [{i+1}/{len(conversation)}] {msg['role']}: {clean[:50]}...")
 
         if msg["role"] == "customer":
             mp3_parts.append(typecast_tts(customer_voice, msg["content"]))
-            mp3_parts.append(silence_300)
+            mp3_parts.append(silence_500)
         else:
-            if fillers and persona.filler_enabled:
-                mp3_parts.append(fillers[filler_idx % len(fillers)])
-                filler_idx += 1
-                mp3_parts.append(silence_1000)
             mp3_parts.append(typecast_tts(persona_voice, msg["content"]))
-            mp3_parts.append(silence_700)
+            mp3_parts.append(silence_800)
 
         time.sleep(0.5)  # rate limit
 
