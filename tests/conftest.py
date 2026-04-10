@@ -4,17 +4,22 @@ import asyncio
 import os
 import tempfile
 from pathlib import Path
+from dotenv import load_dotenv
+
+# .env 파일 먼저 로드 (실제 API 키 사용)
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(env_path, override=False)
 
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from httpx import AsyncClient, ASGITransport
 
-# 테스트용 환경변수 (실제 API 호출 방지)
-os.environ["ANTHROPIC_API_KEY"] = "test-key"
-os.environ["DAILY_API_KEY"] = "test-key"
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = ""
-os.environ["ELEVENLABS_API_KEY"] = "test-key"
+# 실제 API 키가 없을 때만 더미 키 사용 (Tier 1 단위 테스트용)
+os.environ.setdefault("ANTHROPIC_API_KEY", "test-key")
+os.environ.setdefault("DAILY_API_KEY", "test-key")
+os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", "")
+os.environ.setdefault("ELEVENLABS_API_KEY", "test-key")
 
 # DB를 임시 파일로 교체
 _temp_db = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
