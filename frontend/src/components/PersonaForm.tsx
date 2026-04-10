@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Persona, PersonaCreate, createPersona, updatePersona } from '../api/client';
+import type { Persona, PersonaCreate } from '../api/client';
+import { createPersona, updatePersona } from '../api/client';
 
 interface Props {
   persona: Persona | null;

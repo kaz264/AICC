@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Persona, getPersonas, deletePersona } from '../api/client';
+import type { Persona } from '../api/client';
+import { getPersonas, deletePersona } from '../api/client';
 import PersonaForm from '../components/PersonaForm';
 import PersonaList from '../components/PersonaList';
 

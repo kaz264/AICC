@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Persona, getPersonas, startCall } from '../api/client';
+import type { Persona } from '../api/client';
+import { getPersonas, startCall } from '../api/client';
 import CallInterface from '../components/CallInterface';
 
 export default function TestCall() {

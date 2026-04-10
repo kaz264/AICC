@@ -1,4 +1,4 @@
-import { Persona } from '../api/client';
+import type { Persona } from '../api/client';
 
 interface Props {
   personas: Persona[];
