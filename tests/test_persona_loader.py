@@ -45,12 +45,13 @@ def test_build_system_prompt_without_filler():
 
 
 def test_build_system_prompt_preserves_original():
-    """원본 시스템 프롬프트가 손상되지 않아야 함"""
+    """원본 시스템 프롬프트가 포함되어야 함"""
     original = "당신은 전문적인 보험 상담사입니다. 고객에게 친절하게 상담하세요."
     persona = _make_persona(system_prompt=original, filler_enabled=False)
     prompt = build_system_prompt(persona)
 
-    assert prompt == original
+    assert original in prompt
+    assert "필수 응답 규칙" in prompt  # 공통 규칙이 추가되어야 함
 
 
 def test_persona_default_values():

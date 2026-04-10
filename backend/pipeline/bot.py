@@ -1,4 +1,8 @@
-"""Pipecat 음성 AI 파이프라인 — 핵심 모듈"""
+"""Pipecat 음성 AI 파이프라인 — 핵심 모듈
+
+build_pipeline(): 파이프라인 조립 (Transport 외부 주입 — 테스트 가능)
+run_voice_agent(): 프로덕션 진입점 (DailyTransport 생성 + 실행)
+"""
 
 import json
 from pipecat.pipeline.pipeline import Pipeline
@@ -20,19 +24,15 @@ from backend.pipeline.rag import search_knowledge
 from backend.pipeline.filler import FillerProcessor
 
 
-async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
-    """Pipecat 음성 에이전트 실행
+async def build_pipeline(persona, transport):
+    """Pipecat 파이프라인 조립 — Transport를 외부에서 주입받음
 
-    1. 페르소나 설정 로드
-    2. STT/LLM/TTS 서비스 생성
-    3. Daily WebRTC 연결
-    4. 파이프라인 실행
+    프로덕션: DailyTransport
+    테스트:   TestTransport (파일 기반)
+
+    Returns: (task, runner, components)
+        components: 디버깅/테스트용 내부 컴포넌트 참조
     """
-
-    # 페르소나 로드
-    persona = await db.get_persona(persona_id)
-    if not persona:
-        raise ValueError(f"페르소나를 찾을 수 없습니다: {persona_id}")
 
     # ── 서비스 컴포넌트 생성 ──
     stt = build_stt_service(persona)
@@ -66,7 +66,6 @@ async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
     system_prompt = build_system_prompt(persona)
     messages = [{"role": "system", "content": system_prompt}]
 
-    # 인사말을 assistant 메시지로 추가
     if persona.greeting_message:
         messages.append({"role": "assistant", "content": persona.greeting_message})
 
@@ -74,7 +73,7 @@ async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
     context_aggregator = llm.create_context_aggregator(context)
 
     # ── Function calling 핸들러 ──
-    async def on_tool_call(function_name: str, tool_call_id: str, arguments: dict, llm_instance, context, result_callback):
+    async def on_tool_call(function_name, tool_call_id, arguments, llm_instance, context, result_callback):
         if function_name == "search_knowledge" and persona.knowledge_base_id:
             query = arguments.get("query", "")
             results = search_knowledge(persona.knowledge_base_id, query)
@@ -85,26 +84,7 @@ async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
 
     llm.register_function("search_knowledge", on_tool_call)
 
-    # ── Daily WebRTC 전송 ──
-    transport = DailyTransport(
-        room_url,
-        None,  # token (bot은 토큰 없이 접속)
-        "AICC Bot",
-        DailyParams(
-            audio_in_enabled=True,
-            audio_out_enabled=True,
-            vad_enabled=True,
-            vad_analyzer=SileroVADAnalyzer(
-                params=SileroVADAnalyzer.VADParams(
-                    threshold=persona.vad_sensitivity,
-                    min_silence_duration_ms=persona.interrupt_threshold_ms,
-                )
-            ),
-            transcription_enabled=False,  # Pipecat STT 사용
-        ),
-    )
-
-    # ── 추임새 프로세서 (LLM 대기 중 즉시 응답) ──
+    # ── 추임새 프로세서 ──
     filler = FillerProcessor(enabled=persona.filler_enabled)
 
     # ── 파이프라인 조립 ──
@@ -113,7 +93,7 @@ async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
             transport.input(),
             stt,
             context_aggregator.user(),
-            filler,  # STT 후, LLM 전에 추임새 삽입
+            filler,
             llm,
             tts,
             transport.output(),
@@ -130,13 +110,54 @@ async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
         ),
     )
 
+    runner = PipelineRunner(handle_sigint=False)
+
+    components = {
+        "stt": stt,
+        "llm": llm,
+        "tts": tts,
+        "filler": filler,
+        "context_aggregator": context_aggregator,
+        "context": context,
+    }
+
+    return task, runner, components
+
+
+async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
+    """프로덕션 진입점: DailyTransport 생성 + 파이프라인 실행"""
+
+    persona = await db.get_persona(persona_id)
+    if not persona:
+        raise ValueError(f"페르소나를 찾을 수 없습니다: {persona_id}")
+
+    # ── Daily WebRTC Transport ──
+    transport = DailyTransport(
+        room_url,
+        None,
+        "AICC Bot",
+        DailyParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            vad_enabled=True,
+            vad_analyzer=SileroVADAnalyzer(
+                params=SileroVADAnalyzer.VADParams(
+                    threshold=persona.vad_sensitivity,
+                    min_silence_duration_ms=persona.interrupt_threshold_ms,
+                )
+            ),
+            transcription_enabled=False,
+        ),
+    )
+
+    task, runner, components = await build_pipeline(persona, transport)
+
     # ── 이벤트 핸들러 ──
     @transport.event_handler("on_first_participant_joined")
     async def on_first_participant(transport, participant):
-        # 참가자가 들어오면 인사말 TTS 재생
         if persona.greeting_message:
             await task.queue_frames(
-                [tts.create_text_frame(persona.greeting_message)]
+                [components["tts"].create_text_frame(persona.greeting_message)]
             )
 
     @transport.event_handler("on_participant_left")
@@ -144,5 +165,4 @@ async def run_voice_agent(room_url: str, persona_id: str, call_id: str):
         await task.cancel()
 
     # ── 실행 ──
-    runner = PipelineRunner(handle_sigint=False)
     await runner.run(task)

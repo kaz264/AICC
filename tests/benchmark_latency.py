@@ -127,6 +127,13 @@ async def run_benchmark(rounds: int = 3):
 
     all_results = []
 
+    # ── Warm-up (첫 실행은 ChromaDB 초기화 등으로 느림) ──
+    print("  [warm-up] 첫 실행 (캐시 워밍)...")
+    warmup_persona = list(persona_map.values())[0]
+    warmup_prompt = build_system_prompt(warmup_persona)
+    measure_full_pipeline(client, warmup_prompt, warmup_persona.knowledge_base_id, "테스트", warmup_persona.llm_model)
+    print("  [warm-up] 완료\n")
+
     for q in TEST_QUERIES:
         persona = persona_map.get(q["persona"])
         if not persona:
@@ -141,24 +148,36 @@ async def run_benchmark(rounds: int = 3):
             )
             round_results.append(result)
 
-        # 통계
-        ttft_values = [r["ttft_ms"] for r in round_results]
-        total_values = [r["total_ms"] for r in round_results]
-        rag_values = [r["rag_ms"] for r in round_results]
-        pipeline_values = [r["pipeline_total_ms"] for r in round_results]
+        # 통계 (평균 + P50/P95)
+        ttft_values = sorted([r["ttft_ms"] for r in round_results])
+        total_values = sorted([r["total_ms"] for r in round_results])
+        rag_values = sorted([r["rag_ms"] for r in round_results])
+        pipeline_values = sorted([r["pipeline_total_ms"] for r in round_results])
+
+        def percentile(vals, p):
+            idx = min(int(len(vals) * p / 100), len(vals) - 1)
+            return round(vals[idx], 1)
 
         stats = {
             "persona": q["persona"],
             "query": q["query"][:30],
             "rag_avg": round(statistics.mean(rag_values), 1),
+            "rag_p50": percentile(rag_values, 50),
+            "rag_p95": percentile(rag_values, 95),
             "ttft_avg": round(statistics.mean(ttft_values), 1),
+            "ttft_p50": percentile(ttft_values, 50),
+            "ttft_p95": percentile(ttft_values, 95),
             "llm_total_avg": round(statistics.mean(total_values), 1),
             "pipeline_avg": round(statistics.mean(pipeline_values), 1),
+            "pipeline_p50": percentile(pipeline_values, 50),
+            "pipeline_p95": percentile(pipeline_values, 95),
         }
         all_results.append(stats)
 
         print(f"  [{stats['persona'][:6]}] \"{stats['query']}...\"")
-        print(f"    RAG: {stats['rag_avg']}ms | TTFT: {stats['ttft_avg']}ms | LLM: {stats['llm_total_avg']}ms | Total: {stats['pipeline_avg']}ms")
+        print(f"    RAG: avg={stats['rag_avg']}ms p50={stats['rag_p50']}ms p95={stats['rag_p95']}ms")
+        print(f"    TTFT: avg={stats['ttft_avg']}ms p50={stats['ttft_p50']}ms p95={stats['ttft_p95']}ms")
+        print(f"    Pipeline: avg={stats['pipeline_avg']}ms p50={stats['pipeline_p50']}ms p95={stats['pipeline_p95']}ms")
 
     # 전체 요약
     print(f"\n{'─'*70}")

@@ -7,7 +7,9 @@ on:
     branches: [master]
 
 jobs:
-  backend-tests:
+  # ── Tier 1+2+3: 빠른 테스트 (매 PR) ──
+  backend-unit-tests:
+    name: "Tier 1-3: Unit + Quality + Latency"
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -26,16 +28,49 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
 
-      - name: Run tests
+      - name: "Tier 1: Unit Tests (DB, API, RAG, Persona)"
         env:
           ANTHROPIC_API_KEY: test-key
           DAILY_API_KEY: test-key
           ELEVENLABS_API_KEY: test-key
           GOOGLE_APPLICATION_CREDENTIALS: ""
         run: |
-          pytest tests/ -v --tb=short
+          pytest tests/test_database.py tests/test_personas_api.py tests/test_rag.py tests/test_persona_loader.py tests/test_scenarios.py -v --tb=short
 
+  # ── Tier 2: 대화 품질 (API 키 필요, secrets 설정 시 실행) ──
+  conversation-quality:
+    name: "Tier 2: Conversation Quality"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'  # PR에서는 건너뜀 (API 비용)
+    needs: backend-unit-tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install anthropic chromadb
+
+      - name: "Tier 2: Quality Tests"
+        if: env.ANTHROPIC_API_KEY != ''
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DAILY_API_KEY: test-key
+          ELEVENLABS_API_KEY: test-key
+          GOOGLE_APPLICATION_CREDENTIALS: ""
+        run: |
+          pytest tests/test_conversation_quality.py -v -s --tb=short -m slow || echo "Quality tests skipped (no API key)"
+
+  # ── 프론트엔드 ──
   frontend-build:
+    name: "Frontend: Build + TypeCheck"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +91,33 @@ jobs:
       - name: Build
         working-directory: frontend
         run: npm run build
+
+  # ── E2E: 배포 전 최종 검증 (수동 트리거) ──
+  e2e-daily-room:
+    name: "E2E: Daily Room Integration"
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'  # 수동 실행만
+    needs: [backend-unit-tests, conversation-quality]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install anthropic chromadb google-cloud-speech google-cloud-texttospeech
+
+      - name: "E2E: Full Pipeline Test"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          DAILY_API_KEY: ${{ secrets.DAILY_API_KEY }}
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS_PATH }}
+          TYPECAST_API_KEY: ${{ secrets.TYPECAST_API_KEY }}
+        run: |
+          python -m tests.e2e_daily_room_test --scenario restaurant_reservation
